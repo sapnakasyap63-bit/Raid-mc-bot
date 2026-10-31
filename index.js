@@ -29,6 +29,113 @@ const COOLDOWN_TIME = 5 * 60 * 1000;
 let activeBots = [];
 let isRunning = false;
 
+// Ek single bot ko create karne aur auto-replace handle karne ka function
+function spawnSingleBot(index) {
+    if (!isRunning) return;
+
+    const username = `${BASE_BOT_NAME}_${Math.floor(Math.random() * 9000 + 1000)}`;
+    
+    const bot = mineflayer.createBot({
+        host: SERVER_IP,
+        port: SERVER_PORT,
+        username: username,
+        auth: 'offline',
+        brand: 'vanilla'
+    });
+
+    activeBots.push(bot);
+
+    bot.on('spawn', () => {
+        console.log(`[+] Bot ${username} server par successfully spawn ho gaya!`);
+
+        // AuthMe / Login Plugin Bypass
+        setTimeout(() => {
+            if (!isRunning) return;
+            bot.chat(`/register ${PASSWORD} ${PASSWORD}`);
+            setTimeout(() => {
+                if (!isRunning) return;
+                bot.chat(`/login ${PASSWORD}`);
+            }, 2000);
+        }, 3000);
+
+        // Anti-Bot bypass movement (5s walk/jump -> 3s stop)
+        function startMovement() {
+            if (!isRunning) return;
+            bot.setControlState('forward', true);
+            bot.setControlState('jump', Math.random() > 0.5);
+            const randomYaw = Math.random() * Math.PI * 2;
+            bot.look(randomYaw, 0, true);
+
+            setTimeout(() => {
+                if (!isRunning) return;
+                bot.setControlState('forward', false);
+                bot.setControlState('jump', false);
+
+                setTimeout(() => {
+                    startMovement();
+                }, 3000);
+            }, 5000);
+        }
+
+        setTimeout(startMovement, 4000);
+
+        // Chat Spamming Logic (50 messages per bot -> 5m cooldown)
+        let messageCount = 0;
+        const spamInterval = setInterval(() => {
+            if (!isRunning) {
+                clearInterval(spamInterval);
+                return;
+            }
+
+            if (messageCount >= MESSAGE_LIMIT) {
+                console.log(`[*] ${username} ne 50 messages bhej diye. 5 min cooldown active...`);
+                clearInterval(spamInterval);
+                
+                setTimeout(() => {
+                    if (isRunning) {
+                        messageCount = 0;
+                    }
+                }, COOLDOWN_TIME);
+                return;
+            }
+
+            bot.chat('DDOS RAIDED BY UNKNOW');
+            messageCount++;
+        }, MESSAGE_INTERVAL);
+
+        bot.on('end', () => {
+            clearInterval(spamInterval);
+        });
+    });
+
+    bot.on('kicked', (reason) => {
+        console.log(`[-] Bot ${username} kick/ban ho gaya: ${reason}`);
+        cleanupAndReplace(bot);
+    });
+
+    bot.on('error', (err) => {
+        console.log(`[-] Bot ${username} Error:`, err.message);
+        cleanupAndReplace(bot);
+    });
+}
+
+// Agar koi bot kick/disconnect ho, toh use list se hata kar turant naya bot le aana
+function cleanupAndReplace(botInstance) {
+    const idx = activeBots.indexOf(botInstance);
+    if (idx !== -1) {
+        activeBots.splice(idx, 1);
+    }
+
+    if (isRunning) {
+        console.log(`[!] Jagah khali ho gayi hai. 3 seconds mein naya random bot spawn ho raha hai...`);
+        setTimeout(() => {
+            if (isRunning) {
+                spawnSingleBot();
+            }
+        }, 3000);
+    }
+}
+
 function startRaidBots() {
     if (isRunning) return;
     isRunning = true;
@@ -39,86 +146,7 @@ function startRaidBots() {
     for (let i = 0; i < TOTAL_BOTS; i++) {
         setTimeout(() => {
             if (!isRunning) return;
-
-            // Random username generation: BASE_BOT_NAME_1234
-            const username = `${BASE_BOT_NAME}_${Math.floor(Math.random() * 9000 + 1000)}`;
-            
-            const bot = mineflayer.createBot({
-                host: SERVER_IP,
-                port: SERVER_PORT,
-                username: username,
-                auth: 'offline',
-                brand: 'vanilla'
-            });
-
-            activeBots.push(bot);
-
-            bot.on('spawn', () => {
-                console.log(`[+] Bot ${username} server par successfully spawn ho gaya!`);
-
-                // AuthMe / Login Plugin Bypass
-                setTimeout(() => {
-                    if (!isRunning) return;
-                    bot.chat(`/register ${PASSWORD} ${PASSWORD}`);
-                    setTimeout(() => {
-                        if (!isRunning) return;
-                        bot.chat(`/login ${PASSWORD}`);
-                    }, 2000);
-                }, 3000);
-
-                // Anti-Bot bypass movement (5s walk/jump -> 3s stop)
-                function startMovement() {
-                    if (!isRunning) return;
-                    bot.setControlState('forward', true);
-                    bot.setControlState('jump', Math.random() > 0.5);
-                    const randomYaw = Math.random() * Math.PI * 2;
-                    bot.look(randomYaw, 0, true);
-
-                    setTimeout(() => {
-                        if (!isRunning) return;
-                        bot.setControlState('forward', false);
-                        bot.setControlState('jump', false);
-
-                        setTimeout(() => {
-                            startMovement();
-                        }, 3000);
-                    }, 5000);
-                }
-
-                setTimeout(startMovement, 4000);
-
-                // Chat Spamming Logic (50 messages per bot -> 5m cooldown)
-                let messageCount = 0;
-                const spamInterval = setInterval(() => {
-                    if (!isRunning) {
-                        clearInterval(spamInterval);
-                        return;
-                    }
-
-                    if (messageCount >= MESSAGE_LIMIT) {
-                        console.log(`[*] ${username} ne 50 messages bhej diye. 5 min cooldown active...`);
-                        clearInterval(spamInterval);
-                        
-                        setTimeout(() => {
-                            if (isRunning) {
-                                messageCount = 0;
-                            }
-                        }, COOLDOWN_TIME);
-                        return;
-                    }
-
-                    bot.chat('DDOS RAIDED BY UNKNOW');
-                    messageCount++;
-                }, MESSAGE_INTERVAL);
-
-                bot.on('end', () => {
-                    clearInterval(spamInterval);
-                });
-            });
-
-            bot.on('error', (err) => {
-                console.log(`[-] Bot ${username} Error:`, err.message);
-            });
+            spawnSingleBot(i);
         }, i * 2000); // 2 seconds ka gap taaki rate-limit na ho
     }
 }
@@ -165,7 +193,7 @@ if (DISCORD_TOKEN) {
                 return interaction.reply({ content: '⚠️ Bots pehle se chal rahe hain!', ephemeral: true });
             }
             startRaidBots();
-            await interaction.reply({ content: '🚀 Raid bots shuru kar diye gaye hain! Fast join ho rahe hain...', ephemeral: true });
+            await interaction.reply({ content: '🚀 Raid bots shuru kar diye gaye hain! Agar koi ban hoga toh naya bot auto-replace ho jayega.', ephemeral: true });
         } 
         else if (interaction.commandName === 'stop') {
             if (!isRunning) {
